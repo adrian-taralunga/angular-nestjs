@@ -1,0 +1,10 @@
+{
+  "extends": "../../tslint.json",
+  "linterOptions": {
+    "exclude": ["apps/api/src/migrations/**"]
+  },
+  "rules": {},
+  "jsRules": {
+    "object-literal-sort-keys": false
+  }
+}

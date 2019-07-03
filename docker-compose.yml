@@ -1,0 +1,111 @@
+version: '3'
+services:
+  keycloak:
+    image: jboss/keycloak:6.0.1
+    container_name: keycloak
+    environment:
+      DB_VENDOR: POSTGRES
+      DB_ADDR: postgres
+      DB_DATABASE: keycloak
+      DB_USER: keycloak
+      DB_PASSWORD: keycloak123
+      KEYCLOAK_USER: admin
+      KEYCLOAK_PASSWORD: admin123
+      KEYCLOAK_LOGLEVEL: INFO
+      PROXY_ADDRESS_FORWARDING: 'true'
+      # Uncomment the line below if you want to specify JDBC parameters. The parameter below is just an example, and it shouldn't be used in production without knowledge. It is highly recommended that you read the PostgreSQL JDBC driver documentation in order to use it.
+      #JDBC_PARAMS: "ssl=true"
+    ports:
+      - 8080:8080
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:alpine
+    container_name: postgres
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres321
+      KEYCLOAK_DB: keycloak
+      KEYCLOAK_DB_USER: keycloak
+      KEYCLOAK_DB_PASSWORD: keycloak123
+    ports:
+      - '31432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'psql postgres://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@localhost:5432/$${POSTGRES_DB} || exit 1']
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - .deploy/postgres/scripts/create_databases.sh:/docker-entrypoint-initdb.d/10-create_databases.sh:ro
+
+  redis:
+    image: redis:alpine
+
+  api:
+    build:
+      context: .
+      dockerfile: .deploy/api/Dockerfile
+    image: xmlking/ngxapi:latest
+    container_name: api
+    environment:
+      NODE_TLS_REJECT_UNAUTHORIZED: 0
+    ports:
+      - '3000:3000'
+    depends_on:
+      - postgres
+
+  web:
+    build:
+      context: .
+      dockerfile: .deploy/webapp/prod.dockerfile
+    image: xmlking/ngxweb:latest
+    container_name: web
+    command: nginx-debug -g 'daemon off;'
+    volumes:
+      - .deploy/webapp/nginx.dev.conf:/etc/nginx/conf.d/nginx.conf:ro
+    ports:
+      - '4200:8080'
+    depends_on:
+      - keycloak
+      - api
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:6.4.0
+    container_name: elasticsearch
+    #    ulimits:
+    #      memlock:
+    #        soft: -1
+    #        hard: -1
+    #    volumes:
+    #    - esdata1:/usr/share/elasticsearch/data
+    environment:
+      discovery.type: single-node
+    ports:
+      - '9200:9200'
+    links:
+      - 'postgres'
+  kibana:
+    image: docker.elastic.co/kibana/kibana:6.4.0
+    container_name: kibana
+    #    volumes:
+    #    - ./kibana.yml:/usr/share/kibana/config/kibana.yml
+    links:
+      - 'elasticsearch'
+    ports:
+      - '5601:5601'
+  transporter:
+    image: xmlking/postgres-to-es-transporter:latest
+    container_name: transporter
+    environment:
+      DB_NAME: cockpit
+      POSTGRES_URI: 'postgres://postgres:postgres321@postgres:5432'
+      ELASTICSEARCH_URI: 'http://elasticsearch:9200'
+    links:
+      - 'postgres'
+      - 'elasticsearch'
+
+volumes:
+  uploads:
+  postgres_data:
+  esdata1:
+  esdata2:
